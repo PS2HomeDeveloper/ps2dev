@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PS2TOOLCHAIN_REPO_URL="https://github.com/ps2dev/ps2toolchain.git"
+PS2TOOLCHAIN_REPO_URL="https://github.com/PS2HomeDeveloper/ps2toolchain.git"
 PS2TOOLCHAIN_DEFAULT_REPO_REF="master"
 PS2SDK_REPO_URL="https://github.com/ps2dev/ps2sdk.git"
 PS2SDK_DEFAULT_REPO_REF="master"
