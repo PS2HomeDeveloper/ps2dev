@@ -1,0 +1,155 @@
+name: CI
+
+# لا تشغيل تلقائي إطلاقاً — فقط عبر زر "Run workflow" في تبويب Actions.
+on:
+  workflow_dispatch: {}
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  TZ: Japan
+  # إعدادات مبدئية لبناء Android NDK Cross-compiler (arm64-v8a)
+  ANDROID_API: 21
+  ANDROID_ARCH_TARGET: aarch64-linux-android
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: "ubuntu:20.04"
+      options: "--user 0 --privileged"
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Enable QEMU emulation for Android ARM64 binaries
+      run: |
+        apt-get -y update
+        apt-get -y install qemu-user-static binfmt-support
+
+    - name: Install Ubuntu host packages
+      run: |
+        apt-get -y update
+        apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
+          texinfo bison flex gettext autopoint autoconf automake libtool \
+          libgmp3-dev libmpfr-dev libmpc-dev g++ gcc git libgsl-dev make patch \
+          zlib1g-dev wget curl ca-certificates gpg unzip
+        curl -LsSf https://apt.kitware.com/kitware-archive.sh | sh
+        apt-get -y install cmake
+
+    - name: Set up Android NDK
+      id: setup-ndk
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r27c
+
+    - name: Export Android cross-compiler environment
+      run: |
+        NDK_TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64"
+        printf 'ANDROID_NDK_HOME=%s\n' "${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+        printf 'CC=%s\n' "$NDK_TOOLCHAIN/bin/${ANDROID_ARCH_TARGET}${ANDROID_API}-clang" >> "$GITHUB_ENV"
+        printf 'CXX=%s\n' "$NDK_TOOLCHAIN/bin/${ANDROID_ARCH_TARGET}${ANDROID_API}-clang++" >> "$GITHUB_ENV"
+        printf 'AR=%s\n' "$NDK_TOOLCHAIN/bin/llvm-ar" >> "$GITHUB_ENV"
+        printf 'LD=%s\n' "$NDK_TOOLCHAIN/bin/ld" >> "$GITHUB_ENV"
+        printf 'RANLIB=%s\n' "$NDK_TOOLCHAIN/bin/llvm-ranlib" >> "$GITHUB_ENV"
+        printf 'NM=%s\n' "$NDK_TOOLCHAIN/bin/llvm-nm" >> "$GITHUB_ENV"
+        printf 'STRIP=%s\n' "$NDK_TOOLCHAIN/bin/llvm-strip" >> "$GITHUB_ENV"
+        printf 'CONFIGURE_HOST=%s\n' "${ANDROID_ARCH_TARGET}" >> "$GITHUB_ENV"
+        printf 'PATH=%s:%s\n' "$NDK_TOOLCHAIN/bin" "$PATH" >> "$GITHUB_ENV"
+
+    - name: Build GMP/MPFR/MPC for Android host
+      run: |
+        set -e
+        mkdir -p "$HOME/android-deps"
+        printf 'ANDROID_DEPS_PREFIX=%s\n' "$HOME/android-deps" >> "$GITHUB_ENV"
+        export ANDROID_DEPS_PREFIX="$HOME/android-deps"
+
+        cd /tmp
+
+        # ---- GMP ----
+        curl -LsSf -o gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+        tar -xf gmp.tar.xz
+        cd gmp-6.3.0
+        ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
+          --disable-shared --enable-static CC_FOR_BUILD=cc
+        make -j "$(nproc)"
+        make install
+        cd /tmp
+
+        # ---- MPFR (يحتاج GMP) ----
+        curl -LsSf -o mpfr.tar.xz https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz
+        tar -xf mpfr.tar.xz
+        cd mpfr-4.2.1
+        ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
+          --with-gmp="$ANDROID_DEPS_PREFIX" --disable-shared --enable-static
+        make -j "$(nproc)"
+        make install
+        cd /tmp
+
+        # ---- MPC (يحتاج GMP و MPFR) ----
+        curl -LsSf -o mpc.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz
+        tar -xf mpc.tar.gz
+        cd mpc-1.3.1
+        ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
+          --with-gmp="$ANDROID_DEPS_PREFIX" --with-mpfr="$ANDROID_DEPS_PREFIX" \
+          --disable-shared --enable-static
+        make -j "$(nproc)"
+        make install
+
+    # ملاحظة: هذه الخطوة هي التي ستفشل غالباً أول مرة، لأن سكربتات
+    # ps2toolchain / ps2toolchain-ee / ps2toolchain-iop / ps2toolchain-dvp
+    # (مستودعات خارجية) لا تستخدم بعد CC/CXX/CONFIGURE_HOST تلقائياً.
+    # نأخذ لقطة الشاشة للخطأ ونعدّل هناك تباعاً.
+    - name: Runs all the stages in the shell
+      run: |
+        set -e
+        . ./config/ci-env.sh
+        if test -f ./build-all.sh; then ./build-all.sh; fi
+        if test -f ./toolchain.sh; then ./toolchain.sh; fi
+
+    - name: Print version of executables
+      run: |
+        if test -f ./config/ci-print-version.sh; then ./config/ci-print-version.sh; fi
+
+    - name: Get short SHA
+      id: slug
+      run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
+
+    - name: Compress ps2dev folder (Android arm64-v8a)
+      run: |
+        XZ_OPT=-9 tar -cJf ps2dev-Android-arm64-v8a.tar.xz ps2dev
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
+        path: ps2dev-Android-arm64-v8a.tar.xz
+
+    - name: Extract tag name
+      if: startsWith(github.ref, 'refs/tags/')
+      id: tag
+      run: printf 'VERSION=%s\n' "${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+
+    - name: Create pre-release
+      if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ps2dev-Android-arm64-v8a.tar.xz
+        prerelease: true
+        name: "Development build (Android arm64-v8a)"
+        tag_name: latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ps2dev-Android-arm64-v8a.tar.xz
+        tag_name: ${{ steps.tag.outputs.VERSION }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
