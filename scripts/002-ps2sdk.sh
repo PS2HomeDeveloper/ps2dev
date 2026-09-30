@@ -80,9 +80,13 @@ else
     rm -rf "$X86_DIR.tmp" /tmp/ps2dev-x86.tar.gz
     mkdir -p "$X86_DIR.tmp"
     if curl -fL --retry 3 --connect-timeout 30 -o /tmp/ps2dev-x86.tar.gz "$URL" && \
-       tar -xzf /tmp/ps2dev-x86.tar.gz -C "$X86_DIR.tmp" --strip-components 1; then
+       tar -xzf /tmp/ps2dev-x86.tar.gz -C "$X86_DIR.tmp"; then
+      ## The archive normally contains one top-level "ps2dev/" folder; accept both layouts.
+      SRC_DIR="$X86_DIR.tmp"
+      if [ ! -d "$SRC_DIR/ee" ] && [ -d "$SRC_DIR/ps2dev/ee" ]; then SRC_DIR="$SRC_DIR/ps2dev"; fi
       rm -rf "$X86_DIR"
-      mv "$X86_DIR.tmp" "$X86_DIR"
+      mv "$SRC_DIR" "$X86_DIR"
+      rm -rf "$X86_DIR.tmp"
       if x86_ok "$X86_DIR"; then
         X86_TOOLCHAIN="$X86_DIR"
         break
