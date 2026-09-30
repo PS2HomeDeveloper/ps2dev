@@ -55,8 +55,10 @@ PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## ------------------------------------------------------------------
 ## Find an x86_64 PS2 cross toolchain that actually runs on this machine.
-##   1) the native copy built earlier in this same job (exact same GCC version);
+##   1) the x86_64 "native" copy built earlier in this same job by the toolchain
+##      scripts (NOT the Android one); used only if it exists and runs;
 ##   2) otherwise the prebuilt ps2dev release (override with PS2DEV_X86_URL).
+##   Set PS2DEV_X86_SOURCE=download to always use the prebuilt release (step 2).
 ## ------------------------------------------------------------------
 x86_ok()
 {
@@ -65,7 +67,7 @@ x86_ok()
 }
 
 X86_TOOLCHAIN=""
-if [ -n "$NATIVE_PS2DEV" ] && x86_ok "$NATIVE_PS2DEV"; then
+if [ "$PS2DEV_X86_SOURCE" != "download" ] && [ -n "$NATIVE_PS2DEV" ] && x86_ok "$NATIVE_PS2DEV"; then
   X86_TOOLCHAIN="$NATIVE_PS2DEV"
   echo "Using native x86_64 toolchain built in this job: $X86_TOOLCHAIN"
 else
