@@ -128,6 +128,13 @@ CLEAN_PATH="$(printf '%s' "$PATH" | tr ':' '\n' \
   | paste -sd: -)"
 PATH_X86="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$CLEAN_PATH"
 
+## ps2sdk installs crt0.o and friends INTO the toolchain tree. In a normal full build
+## these folders already exist (created by the toolchain step); when the toolchain
+## step is skipped (dev mode) they must be created here. mkdir -p is harmless otherwise.
+mkdir -p "$PS2DEV/ee/mips64r5900el-ps2-elf/lib" "$PS2DEV/ee/mips64r5900el-ps2-elf/include" \
+         "$PS2DEV/iop/mipsel-none-elf/lib" "$PS2DEV/iop/mipsel-none-elf/include" \
+         "$PS2DEV/dvp" "$PS2DEV/bin"
+
 ## A previous package may have left Android (aarch64) tools in $PS2SDK/bin; never run them.
 rm -rf "${PS2SDK:?PS2SDK is not set}/bin"
 
