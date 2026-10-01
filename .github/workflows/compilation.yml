@@ -8,6 +8,10 @@ on:
         description: "وضع التطوير: تخطَّ بناء الـ toolchain وابدأ مباشرةً من ps2sdk (أزل العلامة للبناء الكامل)"
         type: boolean
         default: true
+      dev_steps:
+        description: "وضع التطوير فقط: أرقام الخطوات (2=ps2sdk 3=ports 4=packer 5=ps2client). مثال: '2 3' أو '3'. ابدأ بـ '2 3' ثم '3' بعد نجاحها."
+        type: string
+        default: "2 3"
 
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -116,21 +120,38 @@ jobs:
     # ps2toolchain / ps2toolchain-ee / ps2toolchain-iop / ps2toolchain-dvp
     # (مستودعات خارجية) لا تستخدم بعد CC/CXX/CONFIGURE_HOST تلقائياً.
     # نأخذ لقطة الشاشة للخطأ ونعدّل هناك تباعاً.
+    - name: Restore dev cache (ps2dev folder from the last successful dev run)
+      if: ${{ inputs.skip_toolchain }}
+      uses: actions/cache/restore@v4
+      with:
+        path: ps2dev
+        key: ps2dev-dev-${{ github.run_id }}
+        restore-keys: |
+          ps2dev-dev-
+
     - name: Runs all the stages in the shell
       env:
         SKIP_TOOLCHAIN: ${{ inputs.skip_toolchain }}
+        DEV_STEPS: ${{ inputs.dev_steps }}
       run: |
         set -e
         . ./config/ci-env.sh
         if [ "$SKIP_TOOLCHAIN" = "true" ]; then
-          echo "=== DEV MODE: skipping step 1 (toolchain), running from step 2 (ps2sdk) ==="
+          echo "=== DEV MODE: skipping step 1 (toolchain), running steps: $DEV_STEPS ==="
           # Step 1 normally creates these; ps2sdk installs crt0.o etc. into them.
           mkdir -p "$PS2DEV/ee/mips64r5900el-ps2-elf/lib" "$PS2DEV/iop" "$PS2DEV/dvp" "$PS2DEV/bin"
-          ./build-all.sh 2
+          ./build-all.sh $DEV_STEPS
         else
           if test -f ./build-all.sh; then ./build-all.sh; fi
           if test -f ./toolchain.sh; then ./toolchain.sh; fi
         fi
+
+    - name: Save dev cache (so the next dev run can start from the later steps)
+      if: ${{ inputs.skip_toolchain && success() }}
+      uses: actions/cache/save@v4
+      with:
+        path: ps2dev
+        key: ps2dev-dev-${{ github.run_id }}
 
     - name: Print version of executables
       run: |
