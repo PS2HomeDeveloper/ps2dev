@@ -78,6 +78,32 @@ ps2dev_x86_setup()
     | paste -sd: -)"
   PATH_X86="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$CLEAN_PATH"
   export X86_TOOLCHAIN PATH_X86 CLEAN_PATH
+  ps2dev_x86_link_sdk
+}
+
+## ps2sdk installs crt0.o into the toolchain tree and the toolchain's specs link every
+## program with -lcglue -lpthreadglue -lprofglue -lkernel -lcdvd. The Android tree
+## ($PS2DEV) gets these files, but the x86 compiler looks ONLY inside its own tree.
+## Without them every link fails ("cannot find entry symbol __start", "undefined
+## reference to _exit", "cannot find -lcglue", "C compiler cannot create executables").
+## This makes the x86 tree use the ps2sdk we built (no-op if ps2sdk is not built yet).
+ps2dev_x86_link_sdk()
+{
+  [ -n "$X86_TOOLCHAIN" ] && [ -d "$PS2SDK/ee/lib" ] || return 0
+  local EE_DST="$X86_TOOLCHAIN/ee/mips64r5900el-ps2-elf/lib"
+  local IOP_DST="$X86_TOOLCHAIN/iop/mipsel-none-elf/lib"
+  local l
+  mkdir -p "$EE_DST" "$IOP_DST"
+  for l in libcglue libpthreadglue libprofglue libkernel libcdvd; do
+    if [ -f "$PS2SDK/ee/lib/$l.a" ]; then ln -sf "$PS2SDK/ee/lib/$l.a" "$EE_DST/$l.a"; fi
+  done
+  if [ -f "$PS2DEV/ee/mips64r5900el-ps2-elf/lib/crt0.o" ]; then
+    cp -f "$PS2DEV/ee/mips64r5900el-ps2-elf/lib/crt0.o" "$EE_DST/crt0.o"
+  fi
+  if [ -f "$PS2DEV/iop/mipsel-none-elf/lib/crt0.o" ]; then
+    cp -f "$PS2DEV/iop/mipsel-none-elf/lib/crt0.o" "$IOP_DST/crt0.o"
+  fi
+  echo "x86 toolchain linked to ps2sdk: $PS2SDK (EE libs + crt0 in $EE_DST)"
 }
 
 run_x86()
