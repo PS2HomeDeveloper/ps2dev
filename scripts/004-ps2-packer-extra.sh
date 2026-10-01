@@ -19,6 +19,20 @@ ps2dev_x86_setup
 
 : "${X86_TOOLCHAIN:?ERROR: x86 PS2SDK toolchain was not found}"
 
+X86_HOST_TOOLS=""
+for d in "$HOME/ps2sdk-x86-tools" "$X86_TOOLCHAIN/ps2sdk/bin"; do
+  if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
+    X86_HOST_TOOLS="$d"
+    break
+  fi
+done
+
+: "${X86_HOST_TOOLS:?ERROR: x86 PS2SDK host tools were not found}"
+test -x "$X86_HOST_TOOLS/bin2c" || {
+  echo "ERROR: x86 PS2SDK bin2c was not found: $X86_HOST_TOOLS/bin2c"
+  exit 1
+}
+
 ## Download the source code.
 REPO_URL="$PS2_PACKER_REPO_URL"
 REPO_REF="$PS2_PACKER_DEFAULT_REPO_REF"
@@ -46,7 +60,7 @@ export PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH"
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## Build and install.
-PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" clean
-PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR"
-PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" install
-PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" clean
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" BIN2C="$X86_HOST_TOOLS/bin2c" clean
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" BIN2C="$X86_HOST_TOOLS/bin2c"
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" BIN2C="$X86_HOST_TOOLS/bin2c" install
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" BIN2C="$X86_HOST_TOOLS/bin2c" clean
