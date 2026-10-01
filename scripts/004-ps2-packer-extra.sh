@@ -11,6 +11,14 @@ trap onerr ERR
 ## Read information from the configuration file.
 source "$(dirname "$0")/../config/ps2dev-config.sh"
 
+
+CONFIG_DIR="$(cd "$(dirname "$0")/../config" && pwd)"
+
+source "$CONFIG_DIR/ps2dev-x86.sh"
+ps2dev_x86_setup
+
+: "${X86_TOOLCHAIN:?ERROR: x86 PS2SDK toolchain was not found}"
+
 ## Download the source code.
 REPO_URL="$PS2_PACKER_REPO_URL"
 REPO_REF="$PS2_PACKER_DEFAULT_REPO_REF"
@@ -32,11 +40,13 @@ fi
 
 cd "$REPO_FOLDER"
 
+export PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH"
+
 ## Determine the maximum number of processes that Make can work with.
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## Build and install.
-make -j "$PROC_NR" clean
-make -j "$PROC_NR"
-make -j "$PROC_NR" install
-make -j "$PROC_NR" clean
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" clean
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR"
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" install
+PATH="$X86_TOOLCHAIN/ee/bin:$X86_TOOLCHAIN/iop/bin:$PATH" make -j "$PROC_NR" clean
