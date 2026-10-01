@@ -133,6 +133,7 @@ jobs:
       env:
         SKIP_TOOLCHAIN: ${{ inputs.skip_toolchain }}
         DEV_STEPS: ${{ inputs.dev_steps }}
+        LZMA_PTHREAD: "0"
       run: |
         set -e
         . ./config/ci-env.sh
