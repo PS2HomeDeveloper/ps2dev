@@ -7,7 +7,7 @@ on:
       skip_toolchain:
         description: "وضع التطوير: تخطَّ بناء الـ toolchain وابدأ مباشرةً من ps2sdk (أزل العلامة للبناء الكامل)"
         type: boolean
-        default: true
+        default: false
       dev_steps:
         description: "وضع التطوير فقط: أرقام الخطوات (2=ps2sdk 3=ports 4=packer 5=ps2client). مثال: '2 3' أو '3'. ابدأ بـ '2 3' ثم '3' بعد نجاحها."
         type: string
