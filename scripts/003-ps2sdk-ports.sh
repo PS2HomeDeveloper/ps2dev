@@ -46,7 +46,7 @@ cd "$REPO_FOLDER"
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## ports need the ps2sdk installed by step 2.
-if [ ! -d "$PS2SDK/ee/lib" ] || [ ! -d "$PS2SDK/common/include" ]; then
+if [ ! -f "$PS2DEV/.ps2sdk-step-ok" ] || [ ! -d "$PS2SDK/ee/lib" ] || [ ! -d "$PS2SDK/common/include" ]; then
   echo "ERROR: ps2sdk is not installed in $PS2SDK (run step 2 first, or restore the dev cache)."
   exit 1
 fi
@@ -85,4 +85,16 @@ PATH_X86_EXTRA="$PS2SDK/bin"
 export PATH_X86_EXTRA
 
 ## Build and install.
-run_x86 make -j "$PROC_NR"
+## Several ports download their sources from third-party servers that sometimes answer
+## with transient errors (e.g. HTTP 522 / timeouts). Already finished ports are not
+## affected, so simply retry a few times before giving up.
+ATTEMPT=1
+until run_x86 make -j "$PROC_NR"; do
+  if [ "$ATTEMPT" -ge 3 ]; then
+    echo "ERROR: ports build failed after $ATTEMPT attempts."
+    exit 1
+  fi
+  ATTEMPT=$((ATTEMPT + 1))
+  echo "=== make failed (possibly a download error); waiting 30s, then attempt $ATTEMPT of 3 ==="
+  sleep 30
+done

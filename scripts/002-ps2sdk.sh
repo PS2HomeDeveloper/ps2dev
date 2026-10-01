@@ -72,6 +72,9 @@ mkdir -p "$PS2DEV/ee/mips64r5900el-ps2-elf/lib" "$PS2DEV/ee/mips64r5900el-ps2-el
 ## A previous package may have left Android (aarch64) tools in $PS2SDK/bin; never run them.
 rm -rf "${PS2SDK:?PS2SDK is not set}/bin"
 
+## Marker that tells later steps (and the dev cache) that ps2sdk is complete.
+rm -f "$PS2DEV/.ps2sdk-step-ok"
+
 echo "=== PHASE 1: PS2 libraries + x86 helper tools (x86_64 toolchain) ==="
 ## Build and install.
 run_x86 make -j "$PROC_NR" clean
@@ -124,3 +127,6 @@ echo "Host tools OK: aarch64 binaries in $PS2SDK/bin"
 (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/libprofglue.a libprofglue.a && cd -)
 (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/libkernel.a libkernel.a && cd -)
 (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/libcdvd.a libcdvd.a && cd -)
+
+## ps2sdk is complete: let later steps know.
+touch "$PS2DEV/.ps2sdk-step-ok"
