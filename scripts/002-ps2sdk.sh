@@ -85,6 +85,9 @@ run_x86 make -j 1
 run_x86 make -j "$PROC_NR" install
 run_x86 make -j "$PROC_NR" clean
 
+## Point the x86 toolchain at the freshly installed ps2sdk (crt0.o + libcglue, libkernel, ...).
+ps2dev_x86_link_sdk
+
 ## Keep a copy of the x86 helper tools: later steps (ports, ...) must RUN them
 ## during their build, which the Android versions installed below cannot do.
 rm -rf "$HOME/ps2sdk-x86-tools"
