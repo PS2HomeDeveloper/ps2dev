@@ -147,7 +147,7 @@ jobs:
         fi
 
     - name: Save dev cache (so the next dev run can start from the later steps)
-      if: ${{ inputs.skip_toolchain && success() }}
+      if: ${{ inputs.skip_toolchain && !cancelled() }}
       uses: actions/cache/save@v4
       with:
         path: ps2dev
