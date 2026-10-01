@@ -44,7 +44,7 @@ jobs:
       run: |
         apt-get -y update
         apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install \
-          texinfo bison flex gettext autopoint autoconf automake libtool \
+          texinfo bison flex gettext autopoint autoconf automake libtool pkg-config \
           libgmp3-dev libmpfr-dev libmpc-dev g++ gcc git libgsl-dev make patch \
           zlib1g-dev wget curl ca-certificates gpg unzip
         curl -LsSf https://apt.kitware.com/kitware-archive.sh | sh
