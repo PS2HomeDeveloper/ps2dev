@@ -61,6 +61,11 @@ X86_HOST_TOOLS=""
 for d in "$HOME/ps2sdk-x86-tools" "$X86_TOOLCHAIN/ps2sdk/bin"; do
   if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then X86_HOST_TOOLS="$d"; break; fi
 done
+
+: "${X86_HOST_TOOLS:?ERROR: x86 PS2SDK host tools were not found}"
+X86_PKG_CONFIG="$X86_HOST_TOOLS/mips64r5900el-ps2-elf-pkg-config"
+: "${X86_PKG_CONFIG:?ERROR: x86 PS2SDK pkg-config was not found}"
+export X86_PKG_CONFIG
 if [ -z "$X86_HOST_TOOLS" ]; then
   echo "ERROR: no x86 ps2sdk helper tools found ($HOME/ps2sdk-x86-tools or $X86_TOOLCHAIN/ps2sdk/bin)."
   exit 1
