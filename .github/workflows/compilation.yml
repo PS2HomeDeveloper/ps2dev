@@ -16,7 +16,7 @@ on:
 env:
   DEBIAN_FRONTEND: noninteractive
   TZ: Japan
-  # إعدادات مبدئية لبناء Android NDK Cross-compiler (arm64-v8a)
+  
   ANDROID_API: 21
   ANDROID_ARCH_TARGET: aarch64-linux-android
 
@@ -71,9 +71,6 @@ jobs:
         printf 'NM=%s\n' "$NDK_TOOLCHAIN/bin/llvm-nm" >> "$GITHUB_ENV"
         printf 'STRIP=%s\n' "$NDK_TOOLCHAIN/bin/llvm-strip" >> "$GITHUB_ENV"
         printf 'CONFIGURE_HOST=%s\n' "${ANDROID_ARCH_TARGET}" >> "$GITHUB_ENV"
-        # المسارات الأصلية (native-ps2dev) توضع أولاً في PATH، لكي تُستخدم
-        # أثناء بناء GCC (تُشغَّل على جهاز الـ CI نفسه)، بينما المسارات
-        # النهائية لأندرويد ($PS2DEV) تبقى فقط في الحزمة المُصدَّرة للمستخدم.
         printf 'PATH=%s:%s:%s:%s\n' "$NATIVE_PS2DEV/ee/bin" "$NATIVE_PS2DEV/iop/bin" "$NDK_TOOLCHAIN/bin" "$PATH" >> "$GITHUB_ENV"
 
     - name: Build GMP/MPFR/MPC for Android host
@@ -86,7 +83,6 @@ jobs:
 
         cd /tmp
 
-        # ---- GMP ----
         wget -q --tries=3 --timeout=30 -O gmp.tar.xz https://mirrors.kernel.org/gnu/gmp/gmp-6.3.0.tar.xz || wget -q --tries=3 --timeout=30 -O gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz || curl -LsSf --retry 3 --connect-timeout 30 -o gmp.tar.xz https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
         tar -xf gmp.tar.xz
         cd gmp-6.3.0
@@ -96,7 +92,6 @@ jobs:
         make install
         cd /tmp
 
-        # ---- MPFR (يحتاج GMP) ----
         wget -q --tries=3 --timeout=30 -O mpfr.tar.xz https://mirrors.kernel.org/gnu/mpfr/mpfr-4.2.1.tar.xz || wget -q --tries=3 --timeout=30 -O mpfr.tar.xz https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz || curl -LsSf --retry 3 --connect-timeout 30 -o mpfr.tar.xz https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.xz
         tar -xf mpfr.tar.xz
         cd mpfr-4.2.1
@@ -106,7 +101,6 @@ jobs:
         make install
         cd /tmp
 
-        # ---- MPC (يحتاج GMP و MPFR) ----
         wget -q --tries=3 --timeout=30 -O mpc.tar.gz https://mirrors.kernel.org/gnu/mpc/mpc-1.3.1.tar.gz || wget -q --tries=3 --timeout=30 -O mpc.tar.gz https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz || curl -LsSf --retry 3 --connect-timeout 30 -o mpc.tar.gz https://ftpmirror.gnu.org/mpc/mpc-1.3.1.tar.gz
         tar -xf mpc.tar.gz
         cd mpc-1.3.1
@@ -116,10 +110,6 @@ jobs:
         make -j "$(nproc)"
         make install
 
-    # ملاحظة: هذه الخطوة هي التي ستفشل غالباً أول مرة، لأن سكربتات
-    # ps2toolchain / ps2toolchain-ee / ps2toolchain-iop / ps2toolchain-dvp
-    # (مستودعات خارجية) لا تستخدم بعد CC/CXX/CONFIGURE_HOST تلقائياً.
-    # نأخذ لقطة الشاشة للخطأ ونعدّل هناك تباعاً.
     - name: Restore dev cache (ps2dev folder from the last successful dev run)
       if: ${{ inputs.skip_toolchain }}
       uses: actions/cache/restore@v4
