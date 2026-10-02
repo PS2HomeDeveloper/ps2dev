@@ -127,16 +127,13 @@ jobs:
       run: |
         set -e
         . ./config/ci-env.sh
-        # ALWAYS pass explicit steps: build-all.sh without arguments runs EVERY script
-        # (including 5 = ps2client), which is not wanted for Android/iOS.
         STEPS="${DEV_STEPS:-1 2 3 4}"
         echo "=== Steps to run: $STEPS (skip_toolchain=$SKIP_TOOLCHAIN) ==="
         if [ "$SKIP_TOOLCHAIN" = "true" ]; then
           case " $STEPS " in
             *" 1 "*) echo "ERROR: step 1 (toolchain) is listed in dev_steps but skip_toolchain is enabled. Remove it from one of them."; exit 1;;
           esac
-          echo "=== DEV MODE: toolchain step skipped ==="
-          # Step 1 normally creates these; ps2sdk installs crt0.o etc. into them.
+          echo "DEV MODE: toolchain step skipped"
           mkdir -p "$PS2DEV/ee/mips64r5900el-ps2-elf/lib" "$PS2DEV/iop" "$PS2DEV/dvp" "$PS2DEV/bin"
         fi
         ./build-all.sh $STEPS
