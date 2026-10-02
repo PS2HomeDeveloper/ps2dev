@@ -11,6 +11,15 @@ trap onerr ERR
 ## Read information from the configuration file.
 source "$(dirname "$0")/../config/ps2dev-config.sh"
 
+## ps2client talks to the PS2 over an Ethernet/network link, which phones do not have,
+## so it is NOT part of the Android/iOS packages. The Android workflow exports
+## ANDROID_NDK_HOME (and may export PS2DEV_SKIP_PS2CLIENT=1 for iOS). Linux/Windows
+## builds have neither, so ps2client is built there. PS2DEV_FORCE_PS2CLIENT=1 overrides.
+if [ "$PS2DEV_FORCE_PS2CLIENT" != "1" ] && { [ -n "$ANDROID_NDK_HOME" ] || [ "$PS2DEV_SKIP_PS2CLIENT" = "1" ]; }; then
+  echo "=== Skipping ps2client: not included in Android/iOS packages ==="
+  exit 0
+fi
+
 ## Download the source code.
 REPO_URL="$PS2CLIENT_REPO_URL"
 REPO_REF="$PS2CLIENT_DEFAULT_REPO_REF"
