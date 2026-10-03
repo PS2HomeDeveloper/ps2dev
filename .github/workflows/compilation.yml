@@ -178,13 +178,34 @@ jobs:
     - name: Compress ps2dev folder (Android arm64-v8a)
       run: |
         set -e
-        # --hard-dereference stores every hard link as an independent file. Termux (and any
-        # tar run on shared storage) cannot extract hard links ("Cannot hard link ...: Permission denied").
-        XZ_OPT=-9 tar --hard-dereference -cJf ps2dev-Android-arm64-v8a.tar.xz ps2dev
-        HL="$(tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | grep -c '^h' || true)"
-        echo "Hard links inside the archive: $HL"
-        test "$HL" = "0"
 
+        # Convert hard links into independent files.
+        # Keep symbolic links unchanged.
+        XZ_OPT=-9 tar \
+          --hard-dereference \
+          -cJf ps2dev-Android-arm64-v8a.tar.xz \
+          ps2dev
+
+        # Verify that the final archive contains no hard links.
+        python3 - <<'PY'
+        import tarfile
+        import sys
+
+        archive = "ps2dev-Android-arm64-v8a.tar.xz"
+
+        with tarfile.open(archive, "r:xz") as tar:
+            hardlinks = [m for m in tar.getmembers() if m.islnk()]
+
+        print(f"Hard links inside the archive: {len(hardlinks)}")
+
+        if hardlinks:
+            print("ERROR: archive still contains hard links:")
+            for member in hardlinks[:20]:
+                print(f"  {member.name} -> {member.linkname}")
+            sys.exit(1)
+
+        print("OK: archive contains 0 hard links")
+        PY
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
