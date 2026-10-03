@@ -114,7 +114,9 @@ jobs:
       if: ${{ inputs.skip_toolchain }}
       uses: actions/cache/restore@v4
       with:
-        path: ps2dev
+        path: |
+          ps2dev
+          .ps2dev-state
         key: ps2dev-dev-${{ github.run_id }}
         restore-keys: |
           ps2dev-dev-
@@ -142,7 +144,9 @@ jobs:
       if: ${{ inputs.skip_toolchain && !cancelled() }}
       uses: actions/cache/save@v4
       with:
-        path: ps2dev
+        path: |
+          ps2dev
+          .ps2dev-state
         key: ps2dev-dev-${{ github.run_id }}
 
     - name: Print version of executables
