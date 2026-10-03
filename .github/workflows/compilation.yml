@@ -153,9 +153,37 @@ jobs:
       id: slug
       run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
 
+    - name: Verify Android executables are PIE
+      run: |
+        set -e
+        # Android (5.0+) refuses to run non-PIE executables ("only position independent
+        # executables (PIE) are supported"). Check every aarch64 ELF in the package.
+        # PS2 (MIPS) programs are ignored: those are ET_EXEC on purpose.
+        READELF="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+        find ps2dev -type f -perm -u+x > /tmp/exec-list.txt
+        TOTAL=0; BAD=0
+        while IFS= read -r f; do
+          HDR="$("$READELF" -h "$f" 2>/dev/null)" || continue
+          echo "$HDR" | grep -q 'Machine:.*AArch64' || continue
+          TOTAL=$((TOTAL + 1))
+          if echo "$HDR" | grep -q 'Type:.*EXEC'; then
+            echo "NON-PIE: $f"
+            BAD=$((BAD + 1))
+          fi
+        done < /tmp/exec-list.txt
+        echo "aarch64 executables checked: $TOTAL, non-PIE: $BAD"
+        if [ "$TOTAL" -eq 0 ]; then echo "ERROR: no aarch64 executables found (check is broken?)"; exit 1; fi
+        if [ "$BAD" -ne 0 ]; then echo "ERROR: $BAD non-PIE executables would not run on Android"; exit 1; fi
+
     - name: Compress ps2dev folder (Android arm64-v8a)
       run: |
-        XZ_OPT=-9 tar -cJf ps2dev-Android-arm64-v8a.tar.xz ps2dev
+        set -e
+        # --hard-dereference stores every hard link as an independent file. Termux (and any
+        # tar run on shared storage) cannot extract hard links ("Cannot hard link ...: Permission denied").
+        XZ_OPT=-9 tar --hard-dereference -cJf ps2dev-Android-arm64-v8a.tar.xz ps2dev
+        HL="$(tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | grep -c '^h' || true)"
+        echo "Hard links inside the archive: $HL"
+        test "$HL" = "0"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
