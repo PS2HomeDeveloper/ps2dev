@@ -73,7 +73,10 @@ mkdir -p "$PS2DEV/ee/mips64r5900el-ps2-elf/lib" "$PS2DEV/ee/mips64r5900el-ps2-el
 rm -rf "${PS2SDK:?PS2SDK is not set}/bin"
 
 ## Marker that tells later steps (and the dev cache) that ps2sdk is complete.
-rm -f "$PS2DEV/.ps2sdk-step-ok"
+## Build-state marker: kept OUTSIDE $PS2DEV so the package has exactly the official layout.
+PS2DEV_STATE_DIR="$(dirname "$PS2DEV")/.ps2dev-state"
+mkdir -p "$PS2DEV_STATE_DIR"
+rm -f "$PS2DEV_STATE_DIR/ps2sdk-step-ok"
 
 echo "=== PHASE 1: PS2 libraries + x86 helper tools (x86_64 toolchain) ==="
 ## Build and install.
@@ -132,4 +135,4 @@ echo "Host tools OK: aarch64 binaries in $PS2SDK/bin"
 (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/libcdvd.a libcdvd.a && cd -)
 
 ## ps2sdk is complete: let later steps know.
-touch "$PS2DEV/.ps2sdk-step-ok"
+touch "$PS2DEV_STATE_DIR/ps2sdk-step-ok"

@@ -46,7 +46,8 @@ cd "$REPO_FOLDER"
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## ports need the ps2sdk installed by step 2.
-if [ ! -f "$PS2DEV/.ps2sdk-step-ok" ] || [ ! -d "$PS2SDK/ee/lib" ] || [ ! -d "$PS2SDK/common/include" ]; then
+PS2DEV_STATE_DIR="$(dirname "$PS2DEV")/.ps2dev-state"
+if [ ! -f "$PS2DEV_STATE_DIR/ps2sdk-step-ok" ] || [ ! -d "$PS2SDK/ee/lib" ] || [ ! -d "$PS2SDK/common/include" ]; then
   echo "ERROR: ps2sdk is not installed in $PS2SDK (run step 2 first, or restore the dev cache)."
   exit 1
 fi
