@@ -179,33 +179,33 @@ jobs:
       run: |
         set -e
 
-        # Convert hard links into independent files.
-        # Keep symbolic links unchanged.
+        echo "Creating archive without hard links..."
+
         XZ_OPT=-9 tar \
           --hard-dereference \
           -cJf ps2dev-Android-arm64-v8a.tar.xz \
           ps2dev
 
-        # Verify that the final archive contains no hard links.
-        python3 - <<'PY'
-        import tarfile
-        import sys
+        echo "Verifying archive..."
 
-        archive = "ps2dev-Android-arm64-v8a.tar.xz"
+        HL="$(tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | \
+          awk '$1 ~ /^h/ { count++ } END { print count+0 }')"
 
-        with tarfile.open(archive, "r:xz") as tar:
-            hardlinks = [m for m in tar.getmembers() if m.islnk()]
+        echo "Hard links inside archive: $HL"
 
-        print(f"Hard links inside the archive: {len(hardlinks)}")
+        if [ "$HL" -ne 0 ]; then
+          echo "ERROR: archive contains hard links"
+          tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | \
+            awk '$1 ~ /^h/ { print }'
+          exit 1
+        fi
 
-        if hardlinks:
-            print("ERROR: archive still contains hard links:")
-            for member in hardlinks[:20]:
-                print(f"  {member.name} -> {member.linkname}")
-            sys.exit(1)
+        echo "OK: archive contains 0 hard links"
 
-        print("OK: archive contains 0 hard links")
-        PY
+        echo "Archive created successfully:"
+        ls -lh ps2dev-Android-arm64-v8a.tar.xz
+
+        
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
