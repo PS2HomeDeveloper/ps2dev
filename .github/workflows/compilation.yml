@@ -8,6 +8,10 @@ on:
         description: "Development mode: skip toolchain build and start directly from ps2sdk (uncheck for full build)"
         type: boolean
         default: false
+      archs:
+        description: "Android architectures to build, space separated: arm64-v8a armeabi-v7a x86_64 x86. Start with ONE (e.g. x86_64); several build in parallel."
+        type: string
+        default: "arm64-v8a"
       skip_runtime_test:
         description: "Skip the post-build runtime test (Android userland under QEMU). Normally leave unchecked."
         type: boolean
@@ -22,10 +26,46 @@ env:
   TZ: Japan
   
   ANDROID_API: 21
-  ANDROID_ARCH_TARGET: aarch64-linux-android
 
 jobs:
+  # Turns the "archs" input into a build matrix. One table holds everything that differs
+  # between the Android ABIs, so adding an architecture never means editing the build steps.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+    - id: m
+      env:
+        ARCHS: ${{ inputs.archs }}
+      run: |
+        set -e
+        # arch                triple (clang prefix)       configure --host            ELF machine  readelf "Machine:"  Termux image  docker platform
+        declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=armv7a-linux-androideabi [x86_64]=x86_64-linux-android [x86]=i686-linux-android )
+        declare -A HOST=(   [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=arm-linux-androideabi    [x86_64]=x86_64-linux-android [x86]=i686-linux-android )
+        declare -A MACHEX=( [arm64-v8a]=b7 [armeabi-v7a]=28 [x86_64]=3e [x86]=03 )
+        declare -A RDMACH=( [arm64-v8a]=AArch64 [armeabi-v7a]=ARM [x86_64]=X86-64 [x86]=80386 )
+        declare -A IMAGE=(  [arm64-v8a]=aarch64 [armeabi-v7a]=arm [x86_64]=x86_64 [x86]=i686 )
+        declare -A PLAT=(   [arm64-v8a]=linux/arm64 [armeabi-v7a]=linux/arm/v7 [x86_64]=linux/amd64 [x86]=linux/386 )
+        items=()
+        for a in ${ARCHS:-arm64-v8a}; do
+          if [ -z "${TRIPLE[$a]}" ]; then
+            echo "ERROR: unknown architecture '$a' (allowed: arm64-v8a armeabi-v7a x86_64 x86)"; exit 1
+          fi
+          items+=("{\"arch\":\"$a\",\"triple\":\"${TRIPLE[$a]}\",\"host\":\"${HOST[$a]}\",\"machex\":\"${MACHEX[$a]}\",\"rdmach\":\"${RDMACH[$a]}\",\"image\":\"${IMAGE[$a]}\",\"plat\":\"${PLAT[$a]}\"}")
+        done
+        matrix="{\"include\":[$(IFS=,; echo "${items[*]}")]}"
+        echo "matrix=$matrix"
+        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
+    name: Build Android ${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      ANDROID_ARCH_TARGET: ${{ matrix.triple }}
     runs-on: ubuntu-latest
     container:
       image: "ubuntu:20.04"
@@ -74,7 +114,7 @@ jobs:
         printf 'RANLIB=%s\n' "$NDK_TOOLCHAIN/bin/llvm-ranlib" >> "$GITHUB_ENV"
         printf 'NM=%s\n' "$NDK_TOOLCHAIN/bin/llvm-nm" >> "$GITHUB_ENV"
         printf 'STRIP=%s\n' "$NDK_TOOLCHAIN/bin/llvm-strip" >> "$GITHUB_ENV"
-        printf 'CONFIGURE_HOST=%s\n' "${ANDROID_ARCH_TARGET}" >> "$GITHUB_ENV"
+        printf 'CONFIGURE_HOST=%s\n' "${{ matrix.host }}" >> "$GITHUB_ENV"
         printf 'PATH=%s:%s:%s:%s\n' "$NATIVE_PS2DEV/ee/bin" "$NATIVE_PS2DEV/iop/bin" "$NDK_TOOLCHAIN/bin" "$PATH" >> "$GITHUB_ENV"
 
     - name: Build GMP/MPFR/MPC for Android host
@@ -121,13 +161,14 @@ jobs:
         path: |
           ps2dev
           .ps2dev-state
-        key: ps2dev-dev-${{ github.run_id }}
+        key: ps2dev-dev-${{ matrix.arch }}-${{ github.run_id }}
         restore-keys: |
-          ps2dev-dev-
+          ps2dev-dev-${{ matrix.arch }}-
 
     - name: Runs all the stages in the shell
       env:
         SKIP_TOOLCHAIN: ${{ inputs.skip_toolchain }}
+        ANDROID_ELF_MACHINE_HEX: ${{ matrix.machex }}
         DEV_STEPS: ${{ inputs.dev_steps }}
         LZMA_PTHREAD: "0"
       run: |
@@ -151,7 +192,7 @@ jobs:
         path: |
           ps2dev
           .ps2dev-state
-        key: ps2dev-dev-${{ github.run_id }}
+        key: ps2dev-dev-${{ matrix.arch }}-${{ github.run_id }}
 
     - name: Print version of executables
       run: |
@@ -161,14 +202,14 @@ jobs:
       id: slug
       run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
 
-    - name: Verify package (PIE + dynamic dependencies of every aarch64 binary)
+    - name: Verify package (PIE + dynamic dependencies of every Android binary)
       run: |
         set -e
         # Fails the build BEFORE anything is archived/published if a binary is non-PIE or
         # needs a library that a clean Android/Termux does not have (e.g. libc++_shared.so).
-        bash ./config/ci-check-package.sh ps2dev
+        CHECK_MACHINE="${{ matrix.rdmach }}" bash ./config/ci-check-package.sh ps2dev
 
-    - name: Compress ps2dev folder (Android arm64-v8a)
+    - name: Compress ps2dev folder (Android ${{ matrix.arch }})
       run: |
         set -e
 
@@ -176,19 +217,19 @@ jobs:
 
         XZ_OPT=-9 tar \
           --hard-dereference \
-          -cJf ps2dev-Android-arm64-v8a.tar.xz \
+          -cJf ps2dev-Android-${{ matrix.arch }}.tar.xz \
           ps2dev
 
         echo "Verifying archive..."
 
-        HL="$(tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | \
+        HL="$(tar -tvJf ps2dev-Android-${{ matrix.arch }}.tar.xz | \
           awk '$1 ~ /^h/ { count++ } END { print count+0 }')"
 
         echo "Hard links inside archive: $HL"
 
         if [ "$HL" -ne 0 ]; then
           echo "ERROR: archive contains hard links"
-          tar -tvJf ps2dev-Android-arm64-v8a.tar.xz | \
+          tar -tvJf ps2dev-Android-${{ matrix.arch }}.tar.xz | \
             awk '$1 ~ /^h/ { print }'
           exit 1
         fi
@@ -196,24 +237,28 @@ jobs:
         echo "OK: archive contains 0 hard links"
 
         echo "Archive created successfully:"
-        ls -lh ps2dev-Android-arm64-v8a.tar.xz
+        ls -lh ps2dev-Android-${{ matrix.arch }}.tar.xz
 
         
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
-        path: ps2dev-Android-arm64-v8a.tar.xz
+        name: ${{ github.event.repository.name }}-Android-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
+        path: ps2dev-Android-${{ matrix.arch }}.tar.xz
 
   # ---------------------------------------------------------------------------
   # Runtime test: run the finished package inside a real Android (Bionic/Termux) userland.
-  # The build machine cannot execute Android programs natively, so an aarch64 Termux
-  # container is run through QEMU. Nothing is published unless this job passes.
+  # The build machine cannot execute Android programs natively, so a Termux container of
+  # the same ABI is used (emulated by QEMU for ARM, native for x86/x86_64).
+  # Each architecture is tested and published independently of the others.
   # ---------------------------------------------------------------------------
   test-android:
-    name: Runtime test (Android arm64 userland under QEMU)
-    needs: build
-    if: ${{ !inputs.skip_toolchain && !inputs.skip_runtime_test }}
+    name: Runtime test Android ${{ matrix.arch }}
+    needs: [prepare, build]
+    if: ${{ always() && !inputs.skip_toolchain && !inputs.skip_runtime_test && needs.prepare.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -224,16 +269,20 @@ jobs:
       id: slug
       run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
 
+    # If this architecture's build failed there is no package: nothing to test.
     - name: Download the package built by the build job
+      id: dl
+      continue-on-error: true
       uses: actions/download-artifact@v4
       with:
-        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
+        name: ${{ github.event.repository.name }}-Android-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
 
     - name: Extract package and check its layout
+      if: steps.dl.outcome == 'success'
       run: |
         set -e
         mkdir -p ext
-        tar -xJf ps2dev-Android-arm64-v8a.tar.xz -C ext
+        tar -xJf ps2dev-Android-${{ matrix.arch }}.tar.xz -C ext
         echo "--- top level of the package ---"
         ls -A ext/ps2dev
         # Files that belong to the build process must never be inside the package.
@@ -241,25 +290,43 @@ jobs:
           if [ -e "ext/ps2dev/$stray" ]; then echo "ERROR: stray build file inside the package: $stray"; exit 1; fi
         done
 
-    - name: Set up QEMU (arm64)
+    - name: Set up QEMU
+      if: steps.dl.outcome == 'success'
       uses: docker/setup-qemu-action@v3
       with:
-        platforms: arm64
+        platforms: arm64,arm
 
     - name: Run the self-test inside a real Android userland (Termux image)
+      if: steps.dl.outcome == 'success'
       run: |
-        docker run --rm --platform linux/arm64 \
+        docker run --rm --platform ${{ matrix.plat }} \
           -v "$PWD/ext/ps2dev:/opt/ps2dev:ro" \
           -v "$PWD/tests:/opt/tests:ro" \
           -e SELFTEST_TIMEOUT=300 \
-          termux/termux-docker:aarch64 \
+          -e MACHINE_HEX=${{ matrix.machex }} \
+          termux/termux-docker:${{ matrix.image }} \
           bash /opt/tests/ps2dev-android-selftest.sh /opt/ps2dev
 
+    - name: Remember that this architecture passed
+      if: steps.dl.outcome == 'success'
+      run: echo ok > tested-ok.txt
+
+    - name: Upload test-passed marker
+      if: steps.dl.outcome == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tested-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
+        path: tested-ok.txt
+
   release:
-    name: Publish release asset
-    needs: [build, test-android]
-    # Runs only for full builds, and only if the runtime test passed (or was deliberately skipped).
-    if: ${{ always() && !inputs.skip_toolchain && needs.build.result == 'success' && (needs.test-android.result == 'success' || needs.test-android.result == 'skipped') }}
+    name: Publish Android ${{ matrix.arch }}
+    needs: [prepare, build, test-android]
+    # Full builds only. Each architecture is published only if ITS package exists and ITS runtime
+    # test passed (or the test was deliberately skipped); other architectures are not affected.
+    if: ${{ always() && !inputs.skip_toolchain && needs.prepare.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -270,14 +337,36 @@ jobs:
       run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
 
     - name: Download the package
+      id: dl_pkg
+      continue-on-error: true
       uses: actions/download-artifact@v4
       with:
-        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
+        name: ${{ github.event.repository.name }}-Android-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
+
+    - name: Download the test-passed marker
+      id: dl_mark
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: tested-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
+
+    - name: Decide whether this architecture may be published
+      id: gate
+      run: |
+        ok=true
+        if [ "${{ steps.dl_pkg.outcome }}" != "success" ]; then
+          echo "No package for ${{ matrix.arch }} (its build failed): nothing to publish."; ok=false
+        elif [ "${{ inputs.skip_runtime_test }}" != "true" ] && [ "${{ steps.dl_mark.outcome }}" != "success" ]; then
+          echo "Runtime test of ${{ matrix.arch }} did not pass: NOT publishing."; ok=false
+        fi
+        echo "ok=$ok" >> "$GITHUB_OUTPUT"
+        echo "publish ${{ matrix.arch }}: $ok"
 
     - name: Upload package to v1.0.0 release
+      if: steps.gate.outputs.ok == 'true'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0.0
-        files: ps2dev-Android-arm64-v8a.tar.xz
+        files: ps2dev-Android-${{ matrix.arch }}.tar.xz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
