@@ -202,6 +202,13 @@ jobs:
       id: slug
       run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
 
+    - name: Strip debug information from the Android binaries
+      run: |
+        set -e
+        # Like the official "make install-strip". Without it the compilers keep full debug info
+        # (several hundred MB each) and the package is far larger than the official ones.
+        CHECK_MACHINE="${{ matrix.rdmach }}" bash ./config/ci-strip-package.sh ps2dev
+
     - name: Verify package (PIE + dynamic dependencies of every Android binary)
       run: |
         set -e
