@@ -8,6 +8,10 @@ on:
         description: "Development mode: skip toolchain build and start directly from ps2sdk (uncheck for full build)"
         type: boolean
         default: false
+      skip_runtime_test:
+        description: "Skip the post-build runtime test (Android userland under QEMU). Normally leave unchecked."
+        type: boolean
+        default: false
       dev_steps:
         description: "Steps to run (work in both modes): 1=toolchain 2=ps2sdk 3=ports 4=packer 5=ps2client. Step 5 is not built for Android/iOS. Example: '1 2 3 4' or '3'."
         type: string
@@ -201,8 +205,76 @@ jobs:
         name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
         path: ps2dev-Android-arm64-v8a.tar.xz
 
+  # ---------------------------------------------------------------------------
+  # Runtime test: run the finished package inside a real Android (Bionic/Termux) userland.
+  # The build machine cannot execute Android programs natively, so an aarch64 Termux
+  # container is run through QEMU. Nothing is published unless this job passes.
+  # ---------------------------------------------------------------------------
+  test-android:
+    name: Runtime test (Android arm64 userland under QEMU)
+    needs: build
+    if: ${{ !inputs.skip_toolchain && !inputs.skip_runtime_test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Get short SHA
+      id: slug
+      run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
+
+    - name: Download the package built by the build job
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
+
+    - name: Extract package and check its layout
+      run: |
+        set -e
+        mkdir -p ext
+        tar -xJf ps2dev-Android-arm64-v8a.tar.xz -C ext
+        echo "--- top level of the package ---"
+        ls -A ext/ps2dev
+        # Files that belong to the build process must never be inside the package.
+        for stray in .ps2sdk-step-ok .ps2dev-state bin.android-backup; do
+          if [ -e "ext/ps2dev/$stray" ]; then echo "ERROR: stray build file inside the package: $stray"; exit 1; fi
+        done
+
+    - name: Set up QEMU (arm64)
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Run the self-test inside a real Android userland (Termux image)
+      run: |
+        docker run --rm --platform linux/arm64 \
+          -v "$PWD/ext/ps2dev:/opt/ps2dev:ro" \
+          -v "$PWD/tests:/opt/tests:ro" \
+          -e SELFTEST_TIMEOUT=300 \
+          termux/termux-docker:aarch64 \
+          bash /opt/tests/ps2dev-android-selftest.sh /opt/ps2dev
+
+  release:
+    name: Publish release asset
+    needs: [build, test-android]
+    # Runs only for full builds, and only if the runtime test passed (or was deliberately skipped).
+    if: ${{ always() && !inputs.skip_toolchain && needs.build.result == 'success' && (needs.test-android.result == 'success' || needs.test-android.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Get short SHA
+      id: slug
+      run: printf '%s\n' "sha8=$(printf '%s\n' ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
+
+    - name: Download the package
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ github.event.repository.name }}-Android-arm64-v8a-${{ steps.slug.outputs.sha8 }}
+
     - name: Upload package to v1.0.0 release
-      if: ${{ !inputs.skip_toolchain }}
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0.0
