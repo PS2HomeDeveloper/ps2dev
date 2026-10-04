@@ -26,6 +26,9 @@ declare -A MISSING=()   # library name -> number of files needing it
 BAD_LIST="$(mktemp)"
 
 while IFS= read -r -d '' f; do
+  # Only real ELF files (magic 7f 45 4c 46). Without this, readelf also "parses" archives (.a) and
+  # raw data files and reports an empty/unknown machine for them.
+  [ "$(od -An -tx1 -N4 "$f" 2>/dev/null | tr -d ' \n')" = "7f454c46" ] || continue
   HDR="$("$READELF" -h "$f" 2>/dev/null)" || continue
   TYPE_LINE="$(echo "$HDR" | grep 'Type:')"
   case "$TYPE_LINE" in *REL*"(Relocatable"*) continue;; esac   # .o files
