@@ -112,18 +112,20 @@ PS2SDKSRC="$(pwd)" make -C tools -j "$PROC_NR"
 PS2SDKSRC="$(pwd)" make -C tools release
 PS2SDKSRC="$(pwd)" make -C tools -j "$PROC_NR" clean
 
-## Verify the installed host tools really are Android (aarch64, ELF machine 0xb7).
+## Verify the installed host tools really are Android binaries of the TARGET ABI.
+## ELF machine: b7=aarch64 (default), 28=arm, 3e=x86-64, 03=x86 (set by the workflow).
+WANT_MACHINE="${ANDROID_ELF_MACHINE_HEX:-b7}"
 for tool in bin2c ps2-irxgen srxfixup romimg adpenc ps2adpcm; do
   f="$PS2SDK/bin/$tool"
   if [ ! -f "$f" ]; then
     echo "ERROR: $f was not installed"; exit 1
   fi
   mach="$(od -An -tx1 -j18 -N1 "$f" | tr -d ' \n')"
-  if [ "$mach" != "b7" ]; then
-    echo "ERROR: $f is not an aarch64 binary (ELF machine byte: $mach)"; exit 1
+  if [ "$mach" != "$WANT_MACHINE" ]; then
+    echo "ERROR: $f has ELF machine 0x$mach, expected 0x$WANT_MACHINE (Android host architecture)"; exit 1
   fi
 done
-echo "Host tools OK: aarch64 binaries in $PS2SDK/bin"
+echo "Host tools OK: Android binaries (ELF machine 0x$WANT_MACHINE) in $PS2SDK/bin"
 
 ## gcc needs to include libcglue, libpthreadglue, libkernel and libcdvd from ps2sdk to be able to build executables,
 ## because they are part of the standard libraries
