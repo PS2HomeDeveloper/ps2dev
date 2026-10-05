@@ -309,10 +309,8 @@ jobs:
         docker run --rm --platform ${{ matrix.plat }} \
           -v "$PWD/ext/ps2dev:/opt/ps2dev:ro" \
           -v "$PWD/tests:/opt/tests:ro" \
-          -e SELFTEST_TIMEOUT=300 \
-          -e MACHINE_HEX=${{ matrix.machex }} \
           termux/termux-docker:${{ matrix.image }} \
-          bash /opt/tests/ps2dev-android-selftest.sh /opt/ps2dev
+          bash /opt/tests/ps2dev-android-selftest.sh /opt/ps2dev ${{ matrix.machex }} 300
 
     - name: Remember that this architecture passed
       if: steps.dl.outcome == 'success'
