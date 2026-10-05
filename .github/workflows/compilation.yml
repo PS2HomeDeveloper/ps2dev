@@ -46,13 +46,16 @@ jobs:
         declare -A MACHEX=( [arm64-v8a]=b7 [armeabi-v7a]=28 [x86_64]=3e [x86]=03 )
         declare -A RDMACH=( [arm64-v8a]=AArch64 [armeabi-v7a]=ARM [x86_64]=X86-64 [x86]=80386 )
         declare -A IMAGE=(  [arm64-v8a]=aarch64 [armeabi-v7a]=arm [x86_64]=x86_64 [x86]=i686 )
+        # API level: 32-bit ABIs need 24 (bionic declares fseeko/ftello for 32-bit only from API 24;
+        # at 21 binutils fails with "call to undeclared function fseeko"). 64-bit ABIs keep 21.
+        declare -A API=(    [arm64-v8a]=21 [armeabi-v7a]=24 [x86_64]=21 [x86]=24 )
         declare -A PLAT=(   [arm64-v8a]=linux/arm64 [armeabi-v7a]=linux/arm/v7 [x86_64]=linux/amd64 [x86]=linux/386 )
         items=()
         for a in ${ARCHS:-arm64-v8a}; do
           if [ -z "${TRIPLE[$a]}" ]; then
             echo "ERROR: unknown architecture '$a' (allowed: arm64-v8a armeabi-v7a x86_64 x86)"; exit 1
           fi
-          items+=("{\"arch\":\"$a\",\"triple\":\"${TRIPLE[$a]}\",\"host\":\"${HOST[$a]}\",\"machex\":\"${MACHEX[$a]}\",\"rdmach\":\"${RDMACH[$a]}\",\"image\":\"${IMAGE[$a]}\",\"plat\":\"${PLAT[$a]}\"}")
+          items+=("{\"arch\":\"$a\",\"triple\":\"${TRIPLE[$a]}\",\"host\":\"${HOST[$a]}\",\"machex\":\"${MACHEX[$a]}\",\"rdmach\":\"${RDMACH[$a]}\",\"image\":\"${IMAGE[$a]}\",\"plat\":\"${PLAT[$a]}\",\"api\":\"${API[$a]}\"}")
         done
         matrix="{\"include\":[$(IFS=,; echo "${items[*]}")]}"
         echo "matrix=$matrix"
@@ -66,6 +69,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
       ANDROID_ARCH_TARGET: ${{ matrix.triple }}
+      ANDROID_API: ${{ matrix.api }}
     runs-on: ubuntu-latest
     container:
       image: "ubuntu:20.04"
