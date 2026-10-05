@@ -3,7 +3,8 @@
 # Works in any Android shell (Termux, adb shell, an APK that unpacks the package, the
 # Termux Docker image used by CI, ...). It needs only bash, find, od, grep, timeout.
 #
-# usage:  bash ps2dev-android-selftest.sh [ps2dev folder]      (default: $HOME/ps2dev)
+# usage:  bash ps2dev-android-selftest.sh [ps2dev folder] [machine_hex] [timeout_seconds]
+#         defaults: $HOME/ps2dev  b7  10
 # env:    MACHINE_HEX      ELF e_machine (hex) of programs to test: b7=aarch64 (default), 28=arm, 3e=x86-64, 03=x86
 #         SELFTEST_TIMEOUT seconds allowed per command (default 10; CI under emulation uses more)
 #
@@ -17,8 +18,10 @@
 # Part 2 compiles tiny programs with the EE and IOP compilers: the real "does it work" test.
 
 ROOT="${1:-$HOME/ps2dev}"
-MACHINE_HEX="${MACHINE_HEX:-b7}"
-TMO="${SELFTEST_TIMEOUT:-10}"
+# Arguments win over environment variables: the Termux Docker entrypoint drops the environment, so
+# CI passes the machine and timeout as arguments.
+MACHINE_HEX="${2:-${MACHINE_HEX:-b7}}"
+TMO="${3:-${SELFTEST_TIMEOUT:-10}}"
 [ -d "$ROOT" ] || { echo "folder not found: $ROOT"; exit 2; }
 
 LOADER_RE='CANNOT LINK EXECUTABLE|error while loading shared libraries|Exec format error|only position independent|library ".*" not found|cannot execute|Syntax error'
