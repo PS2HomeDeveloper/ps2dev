@@ -135,7 +135,7 @@ jobs:
         tar -xf gmp.tar.xz
         cd gmp-6.3.0
         ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
-          --disable-shared --enable-static CC_FOR_BUILD=cc
+          --disable-shared --enable-static --with-pic CC_FOR_BUILD=cc
         make -j "$(nproc)"
         make install
         cd /tmp
@@ -144,7 +144,7 @@ jobs:
         tar -xf mpfr.tar.xz
         cd mpfr-4.2.1
         ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
-          --with-gmp="$ANDROID_DEPS_PREFIX" --disable-shared --enable-static
+          --with-gmp="$ANDROID_DEPS_PREFIX" --disable-shared --enable-static --with-pic
         make -j "$(nproc)"
         make install
         cd /tmp
@@ -154,7 +154,7 @@ jobs:
         cd mpc-1.3.1
         ./configure --host="$CONFIGURE_HOST" --prefix="$ANDROID_DEPS_PREFIX" \
           --with-gmp="$ANDROID_DEPS_PREFIX" --with-mpfr="$ANDROID_DEPS_PREFIX" \
-          --disable-shared --enable-static
+          --disable-shared --enable-static --with-pic
         make -j "$(nproc)"
         make install
 
