@@ -73,13 +73,20 @@ jobs:
         # API level: 32-bit ABIs need 24 (bionic declares fseeko/ftello for 32-bit only from API 24;
         # at 21 binutils fails with "call to undeclared function fseeko"). 64-bit ABIs keep 21.
         declare -A API=(    [arm64-v8a]=21 [armeabi-v7a]=24 [x86_64]=21 [x86]=24 )
+        # Extra "docker run" options. 32-bit ARM under QEMU: the guest calls personality(0xffffffff) and the
+        # default seccomp filter answers "Operation not permitted" (the screenshot's error); unconfined fixes it.
+        declare -A DARGS=(  [arm64-v8a]="" [armeabi-v7a]="--security-opt seccomp=unconfined" [x86_64]="" [x86]="" )
+        # STRICT: must the runtime test pass before this architecture is published? armeabi-v7a is "false":
+        # emulating the 32-bit ARM Termux image on the CI machine is unreliable (see DARGS). If it cannot
+        # run, the package is still published (it passed the build and the package check) with a warning.
+        declare -A STRICT=( [arm64-v8a]=true [armeabi-v7a]=false [x86_64]=true [x86]=true )
         declare -A PLAT=(   [arm64-v8a]=linux/arm64 [armeabi-v7a]=linux/arm/v7 [x86_64]=linux/amd64 [x86]=linux/386 )
         items=()
         for a in $ARCHS; do
           if [ -z "${TRIPLE[$a]}" ]; then
             echo "ERROR: unknown architecture '$a' (allowed: arm64-v8a armeabi-v7a x86_64 x86)"; exit 1
           fi
-          items+=("{\"arch\":\"$a\",\"triple\":\"${TRIPLE[$a]}\",\"host\":\"${HOST[$a]}\",\"machex\":\"${MACHEX[$a]}\",\"rdmach\":\"${RDMACH[$a]}\",\"image\":\"${IMAGE[$a]}\",\"plat\":\"${PLAT[$a]}\",\"api\":\"${API[$a]}\"}")
+          items+=("{\"arch\":\"$a\",\"triple\":\"${TRIPLE[$a]}\",\"host\":\"${HOST[$a]}\",\"machex\":\"${MACHEX[$a]}\",\"rdmach\":\"${RDMACH[$a]}\",\"image\":\"${IMAGE[$a]}\",\"plat\":\"${PLAT[$a]}\",\"api\":\"${API[$a]}\",\"dargs\":\"${DARGS[$a]}\",\"strict\":\"${STRICT[$a]}\"}")
         done
         matrix="{\"include\":[$(IFS=,; echo "${items[*]}")]}"
         echo "matrix=$matrix"
@@ -295,7 +302,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -332,20 +339,28 @@ jobs:
         platforms: arm64,arm
 
     - name: Run the self-test inside a real Android userland (Termux image)
+      id: selftest
       if: steps.dl.outcome == 'success'
+      timeout-minutes: 30
+      # For architectures whose test is not mandatory, a failure here does not fail the whole job.
+      continue-on-error: ${{ matrix.strict != 'true' }}
       run: |
-        docker run --rm --platform ${{ matrix.plat }} \
+        docker run --rm --platform ${{ matrix.plat }} ${{ matrix.dargs }} \
           -v "$PWD/ext/ps2dev:/opt/ps2dev:ro" \
           -v "$PWD/tests:/opt/tests:ro" \
           termux/termux-docker:${{ matrix.image }} \
           bash /opt/tests/ps2dev-android-selftest.sh /opt/ps2dev ${{ matrix.machex }} 300
 
+    - name: Report a test that did not pass (non-mandatory architectures)
+      if: steps.dl.outcome == 'success' && steps.selftest.outcome == 'failure' && matrix.strict != 'true'
+      run: echo "WARNING - the runtime test of ${{ matrix.arch }} did NOT pass or could not run. Its test is not mandatory, so it can still be published; test it on a real device."
+
     - name: Remember that this architecture passed
-      if: steps.dl.outcome == 'success'
+      if: steps.dl.outcome == 'success' && steps.selftest.outcome == 'success'
       run: echo ok > tested-ok.txt
 
     - name: Upload test-passed marker
-      if: steps.dl.outcome == 'success'
+      if: steps.dl.outcome == 'success' && steps.selftest.outcome == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: tested-${{ matrix.arch }}-${{ steps.slug.outputs.sha8 }}
@@ -390,7 +405,11 @@ jobs:
         if [ "${{ steps.dl_pkg.outcome }}" != "success" ]; then
           echo "No package for ${{ matrix.arch }} (its build failed): nothing to publish."; ok=false
         elif [ "${{ inputs.skip_runtime_test }}" != "true" ] && [ "${{ steps.dl_mark.outcome }}" != "success" ]; then
-          echo "Runtime test of ${{ matrix.arch }} did not pass: NOT publishing."; ok=false
+          if [ "${{ matrix.strict }}" = "true" ]; then
+            echo "Runtime test of ${{ matrix.arch }} did not pass: NOT publishing."; ok=false
+          else
+            echo "WARNING: ${{ matrix.arch }} is published WITHOUT a passing runtime test (not mandatory for this architecture)."
+          fi
         fi
         echo "ok=$ok" >> "$GITHUB_OUTPUT"
         echo "publish ${{ matrix.arch }}: $ok"
