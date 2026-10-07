@@ -8,10 +8,22 @@ on:
         description: "Development mode: skip toolchain build and start directly from ps2sdk (uncheck for full build)"
         type: boolean
         default: false
-      archs:
-        description: "Android architectures to build, space separated: arm64-v8a armeabi-v7a x86_64 x86. Start with ONE (e.g. x86_64); several build in parallel."
-        type: string
-        default: "arm64-v8a"
+      arch_arm64_v8a:
+        description: "Android arm64-v8a  (64-bit ARM, most modern phones)"
+        type: boolean
+        default: true
+      arch_armeabi_v7a:
+        description: "Android armeabi-v7a (32-bit ARM, older phones)"
+        type: boolean
+        default: true
+      arch_x86_64:
+        description: "Android x86_64 (64-bit Intel/AMD: emulators, Chromebooks)"
+        type: boolean
+        default: true
+      arch_x86:
+        description: "Android x86 (32-bit Intel/AMD)"
+        type: boolean
+        default: true
       skip_runtime_test:
         description: "Skip the post-build runtime test (Android userland under QEMU). Normally leave unchecked."
         type: boolean
@@ -37,9 +49,21 @@ jobs:
     steps:
     - id: m
       env:
-        ARCHS: ${{ inputs.archs }}
+        SEL_ARM64: ${{ inputs.arch_arm64_v8a }}
+        SEL_ARMV7: ${{ inputs.arch_armeabi_v7a }}
+        SEL_X8664: ${{ inputs.arch_x86_64 }}
+        SEL_X86: ${{ inputs.arch_x86 }}
       run: |
         set -e
+        # An architecture is built unless its box is explicitly unticked ("false").
+        # (If the workflow is ever started without inputs, all four are built.)
+        ARCHS=""
+        [ "$SEL_ARM64" != "false" ] && ARCHS="$ARCHS arm64-v8a"
+        [ "$SEL_ARMV7" != "false" ] && ARCHS="$ARCHS armeabi-v7a"
+        [ "$SEL_X8664" != "false" ] && ARCHS="$ARCHS x86_64"
+        [ "$SEL_X86"   != "false" ] && ARCHS="$ARCHS x86"
+        if [ -z "$ARCHS" ]; then echo "ERROR: no architecture is ticked: tick at least one."; exit 1; fi
+        echo "Architectures to build:$ARCHS"
         # arch                triple (clang prefix)       configure --host            ELF machine  readelf "Machine:"  Termux image  docker platform
         declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=armv7a-linux-androideabi [x86_64]=x86_64-linux-android [x86]=i686-linux-android )
         declare -A HOST=(   [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=arm-linux-androideabi    [x86_64]=x86_64-linux-android [x86]=i686-linux-android )
@@ -51,7 +75,7 @@ jobs:
         declare -A API=(    [arm64-v8a]=21 [armeabi-v7a]=24 [x86_64]=21 [x86]=24 )
         declare -A PLAT=(   [arm64-v8a]=linux/arm64 [armeabi-v7a]=linux/arm/v7 [x86_64]=linux/amd64 [x86]=linux/386 )
         items=()
-        for a in ${ARCHS:-arm64-v8a}; do
+        for a in $ARCHS; do
           if [ -z "${TRIPLE[$a]}" ]; then
             echo "ERROR: unknown architecture '$a' (allowed: arm64-v8a armeabi-v7a x86_64 x86)"; exit 1
           fi
