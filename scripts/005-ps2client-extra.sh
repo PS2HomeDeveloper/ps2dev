@@ -50,13 +50,43 @@ if [ -n "$ANDROID_NDK_HOME" ]; then
     | xargs -r sed -i -E 's# -I/usr/(local/)?include##g; s# -L/usr/(local/)?lib[0-9a-z_/-]*##g'
   echo "--- host paths still mentioned in the Makefiles (should be empty) ---"
   grep -rn -e '/usr/include' -e '/usr/local/include' --include=Makefile --include='*.mk' . | head -n 5 || true
+  # bionic (Android's libc) already contains the pthread functions; there is no separate libpthread.
+  grep -rlE -e ' -lpthread' --include=Makefile --include='Makefile.*' --include='*.mk' . 2>/dev/null \
+    | xargs -r sed -i -E 's# -lpthread##g'
+fi
+
+## Android's libc (bionic) has NO pthread_cancel(): "call to undeclared function 'pthread_cancel'"
+## (src/ps2link.c). Provide a replacement through a header that is force-included into every file:
+## the thread is interrupted with a signal and ends itself. Used only for Android builds.
+MAKE_CC_ARGS=()
+if [ -n "$ANDROID_NDK_HOME" ]; then
+  cat > "$PWD/android-compat.h" <<'EOF_COMPAT'
+/* Android compatibility for ps2client (bionic has no pthread_cancel). */
+#ifndef PS2DEV_ANDROID_COMPAT_H
+#define PS2DEV_ANDROID_COMPAT_H
+#include <pthread.h>
+#include <signal.h>
+static void ps2dev_cancel_handler(int sig) { (void)sig; pthread_exit(NULL); }
+static inline int ps2dev_pthread_cancel(pthread_t t)
+{
+  struct sigaction sa;
+  sa.sa_handler = ps2dev_cancel_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  sigaction(SIGUSR2, &sa, NULL);
+  return pthread_kill(t, SIGUSR2);
+}
+#define pthread_cancel ps2dev_pthread_cancel
+#endif
+EOF_COMPAT
+  MAKE_CC_ARGS=(CC="$CC -include $PWD/android-compat.h")
 fi
 
 ## Determine the maximum number of processes that Make can work with.
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
 
 ## Build and install.
-make -j "$PROC_NR" clean
-make -j "$PROC_NR"
-make -j "$PROC_NR" install
-make -j "$PROC_NR" clean
+make "${MAKE_CC_ARGS[@]}" -j "$PROC_NR" clean
+make "${MAKE_CC_ARGS[@]}" -j "$PROC_NR"
+make "${MAKE_CC_ARGS[@]}" -j "$PROC_NR" install
+make "${MAKE_CC_ARGS[@]}" -j "$PROC_NR" clean
