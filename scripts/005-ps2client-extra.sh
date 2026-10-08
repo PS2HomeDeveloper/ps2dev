@@ -11,12 +11,11 @@ trap onerr ERR
 ## Read information from the configuration file.
 source "$(dirname "$0")/../config/ps2dev-config.sh"
 
-## ps2client talks to the PS2 over an Ethernet/network link, which phones do not have,
-## so it is NOT part of the Android/iOS packages. The Android workflow exports
-## ANDROID_NDK_HOME (and may export PS2DEV_SKIP_PS2CLIENT=1 for iOS). Linux/Windows
-## builds have neither, so ps2client is built there. PS2DEV_FORCE_PS2CLIENT=1 overrides.
-if [ "$PS2DEV_FORCE_PS2CLIENT" != "1" ] && { [ -n "$ANDROID_NDK_HOME" ] || [ "$PS2DEV_SKIP_PS2CLIENT" = "1" ]; }; then
-  echo "=== Skipping ps2client: not included in Android/iOS packages ==="
+## ps2client IS built for every platform, Android and iOS included: it talks to the PS2 over the
+## network (TCP/UDP to ps2link), so a phone on the same Wi-Fi/LAN as the PS2 can use it.
+## Set PS2DEV_SKIP_PS2CLIENT=1 to leave it out.
+if [ "$PS2DEV_SKIP_PS2CLIENT" = "1" ]; then
+  echo "=== Skipping ps2client (PS2DEV_SKIP_PS2CLIENT=1) ==="
   exit 0
 fi
 
@@ -40,6 +39,18 @@ else
 fi
 
 cd "$REPO_FOLDER"
+
+## Cross-building for Android: the ps2client Makefile adds the BUILD machine's header/library folders
+## (-I/usr/include ...), which make the Android compiler read Ubuntu's headers and fail
+## ("'bits/libc-header-start.h' file not found"). Remove them; the Android compiler already
+## knows its own sysroot. Only done for Android builds.
+if [ -n "$ANDROID_NDK_HOME" ]; then
+  grep -rlE -e '-I/usr/(local/)?include' -e '-L/usr/(local/)?lib' \
+       --include=Makefile --include='Makefile.*' --include='*.mk' . 2>/dev/null \
+    | xargs -r sed -i -E 's# -I/usr/(local/)?include##g; s# -L/usr/(local/)?lib[0-9a-z_/-]*##g'
+  echo "--- host paths still mentioned in the Makefiles (should be empty) ---"
+  grep -rn -e '/usr/include' -e '/usr/local/include' --include=Makefile --include='*.mk' . | head -n 5 || true
+fi
 
 ## Determine the maximum number of processes that Make can work with.
 PROC_NR=$(getconf _NPROCESSORS_ONLN)
